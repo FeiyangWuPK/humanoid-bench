@@ -25,12 +25,17 @@ from collections import deque
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--env_name", type=str)
-parser.add_argument("--seed", type=int)
+parser.add_argument("--seed", default=42, type=int)
 parser.add_argument("--num_envs", default=16, type=int)
 parser.add_argument("--learning_rate", default=3e-5, type=float)
 parser.add_argument("--max_steps", default=20000000, type=int)
 parser.add_argument("--wandb_entity", default="patrickfywu", type=str)
+parser.add_argument("--obs_wrapper", default="False")
+parser.add_argument("--privileged_info_wrapper", default="False")
+parser.add_argument("--sensors", default="")
+parser.add_argument("--render_mode", default="rgb_array")  # "human" or "rgb_array".
 ARGS = parser.parse_args()
+kwargs = vars(ARGS).copy()
 
 
 def make_env(rank, seed=0):
@@ -43,7 +48,7 @@ def make_env(rank, seed=0):
 
     def _init():
 
-        env = gym.make(ARGS.env_name)
+        env = gym.make(ARGS.env_name, **kwargs)
         env = TimeLimit(env, max_episode_steps=1000)
         env = Monitor(env)
 
@@ -177,7 +182,7 @@ def main(argv):
     )
 
     model = PPO(
-        "MlpPolicy",
+        "MultiInputPolicy",
         env,
         verbose=1,
         tensorboard_log=f"runs/{run.id}",
@@ -193,6 +198,7 @@ def main(argv):
             LogCallback(info_keywords=[]),
             EpisodeLogCallback(),
         ],
+        progress_bar=True,
     )
 
     model.save("ppo")

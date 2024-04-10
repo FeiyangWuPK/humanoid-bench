@@ -18,6 +18,7 @@ from .wrappers import (
     DoubleReachRelativeWrapper,
     BlockedHandsLocoWrapper,
     ObservationWrapper,
+    PrivilegedinfoWrapper,
 )
 
 from .robots import H1, H1Hand, H1Touch, H1Strong
@@ -130,6 +131,14 @@ class HumanoidEnv(MujocoEnv, gym.utils.EzPickle):
         else:
             self.obs_wrapper = False
 
+        self.privileged_info_wrapper = kwargs.get("privileged_info_wrapper", None)
+        if self.privileged_info_wrapper is not None:
+            self.privileged_info_wrapper = (
+                kwargs.get("privileged_info_wrapper", "False").lower() == "true"
+            )
+        else:
+            self.privileged_info_wrapper = False
+
         MujocoEnv.__init__(
             self,
             model_path,
@@ -149,6 +158,21 @@ class HumanoidEnv(MujocoEnv, gym.utils.EzPickle):
         )
 
         self.task = TASKS[task](self.robot, self, **kwargs)
+
+        # Set up named indexing.
+        data = MjDataWrapper(self.data)
+        model = MjModelWrapper(self.model)
+        axis_indexers = index.make_axis_indexers(model)
+        self.named = NamedIndexStructs(
+            model=index.struct_indexer(model, "mjmodel", axis_indexers),
+            data=index.struct_indexer(data, "mjdata", axis_indexers),
+        )
+
+        assert self.robot.dof + self.task.dof == len(data.qpos), (
+            self.robot.dof,
+            self.task.dof,
+            len(data.qpos),
+        )
 
         # Wrap for hierarchical control
         if (
@@ -170,6 +194,9 @@ class HumanoidEnv(MujocoEnv, gym.utils.EzPickle):
                 self.task = BlockedHandsLocoWrapper(self.task, **kwargs)
             else:
                 raise ValueError(f"Unknown policy_type: {kwargs['policy_type']}")
+        elif self.privileged_info_wrapper:
+            self.task = PrivilegedinfoWrapper(self.task, **kwargs)
+            self.observation_space = self.task.observation_space
         elif self.obs_wrapper:
             # Note that observation wrapper is not compatible with hierarchical policy
             self.task = ObservationWrapper(self.task, **kwargs)
@@ -184,21 +211,6 @@ class HumanoidEnv(MujocoEnv, gym.utils.EzPickle):
         if isinstance(self.task, (BookshelfHard, BookshelfSimple, Kitchen, Cube)):
             self.randomness = 0
         print(isinstance(self.task, (BookshelfHard, BookshelfSimple, Kitchen, Cube)))
-
-        # Set up named indexing.
-        data = MjDataWrapper(self.data)
-        model = MjModelWrapper(self.model)
-        axis_indexers = index.make_axis_indexers(model)
-        self.named = NamedIndexStructs(
-            model=index.struct_indexer(model, "mjmodel", axis_indexers),
-            data=index.struct_indexer(data, "mjdata", axis_indexers),
-        )
-
-        assert self.robot.dof + self.task.dof == len(data.qpos), (
-            self.robot.dof,
-            self.task.dof,
-            len(data.qpos),
-        )
 
     def step(self, action):
         return self.task.step(action)

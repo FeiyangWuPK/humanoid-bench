@@ -149,3 +149,26 @@ class Package(Task):
             [np.random.uniform(-2, 2), np.random.uniform(-2, 2), 0]
         )
         return super().reset_model()
+
+    def get_privileged_info(self):
+        package_destination = self._env.named.data.site_xpos["destination_loc"]
+        box_pos = self._env.data.qpos.flat.copy()[-7:]
+        box_vel = self._env.data.qvel.flat.copy()[-6:]
+        left_hand = self.robot.left_hand_position()
+        right_hand = self.robot.right_hand_position()
+
+        return np.concatenate(
+            [
+                package_destination,
+                box_pos,
+                box_vel,
+                left_hand,
+                right_hand,
+            ]
+        )
+
+    # TODO: this needs to be moved to the wrapper class because image needs to be noisy as well
+    def get_noisy_observation(
+        self,
+    ):
+        return self.get_obs()

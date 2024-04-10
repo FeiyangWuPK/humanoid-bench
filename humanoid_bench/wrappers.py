@@ -442,7 +442,7 @@ class ObservationWrapper(BaseWrapper):
         proprio_space = Box(
             low=-np.inf,
             high=np.inf,
-            shape=(self.task._env.robot.dof * 2 - 1 - 13,),
+            shape=(self.task._env.robot.dof * 2 - 13,),
             dtype=np.float64,
         )
 
@@ -561,3 +561,168 @@ class ObservationWrapper(BaseWrapper):
             / (self.task._env.action_high - self.task._env.action_low)
             - 1
         )
+
+
+class PrivilegedinfoWrapper(ObservationWrapper):
+    def __init__(self, task, **kwargs):
+        self.task = task
+        self.dof = task.dof
+        if not hasattr(task._env, "viewer"):
+            task._env.viewer = task._env.mujoco_renderer._get_viewer(
+                task._env.render_mode
+            )
+
+        sensors = kwargs.get("sensors").split(",")
+        self._tactile_ob = "tactile" in sensors
+        self._camera_ob = "image" in sensors
+
+        if self._tactile_ob:
+            assert (
+                "H1Touch" == task._env.robot.__class__.__name__
+            ), "Tactile observations are only available for H1Touch robot"
+
+    @property
+    def observation_space(self):
+        proprio_space = Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(self.task._env.robot.dof * 2 - 13,),
+            dtype=np.float64,
+        )
+
+        if self._camera_ob:
+            image_example = self.get_camera_obs()
+            camera_spaces = [
+                (
+                    key,
+                    Box(
+                        low=0, high=255, shape=image_example[key].shape, dtype=np.uint8
+                    ),
+                )
+                for key in image_example
+            ]
+
+        if self._tactile_ob:
+            tactile_example = self.get_tactile_obs()
+            tactile_spaces = [
+                (
+                    key,
+                    Box(
+                        low=-np.inf,
+                        high=np.inf,
+                        shape=tactile_example[key].shape,
+                        dtype=np.float64,
+                    ),
+                )
+                for key in tactile_example
+            ]
+
+        privileged_info = self.task.get_privileged_info()
+        privileged_space = Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=privileged_info.shape,
+            dtype=np.float64,
+        )
+        noisy_observation = self.task.get_noisy_observation()
+        noisy_obs_space = Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=noisy_observation.shape,
+            dtype=np.float64,
+        )
+
+        if self._tactile_ob and self._camera_ob:
+            return Dict(
+                [("proprio", proprio_space)]
+                + camera_spaces
+                + tactile_spaces
+                + [
+                    ("privileged_info", privileged_space),
+                    # ("noisy_observation", noisy_obs_space),
+                ]
+            )
+        elif self._tactile_ob:
+            return Dict(
+                [("proprio", proprio_space)]
+                + tactile_spaces
+                + [
+                    ("privileged_info", privileged_space),
+                    # ("noisy_observation", noisy_obs_space),
+                ]
+            )
+        elif self._camera_ob:
+            return Dict(
+                [("proprio", proprio_space)]
+                + camera_spaces
+                + [
+                    ("privileged_info", privileged_space),
+                    # ("noisy_observation", noisy_obs_space),
+                ]
+            )
+        else:
+            return Dict(
+                [("proprio", proprio_space)]
+                + [
+                    ("privileged_info", privileged_space),
+                    # ("noisy_observation", noisy_obs_space),
+                ]
+            )
+
+    def get_obs(self):
+
+        position = self.task._env.robot.joint_angles()
+        velocity = self.task._env.robot.joint_velocities()
+        robot_state = np.concatenate((position, velocity))
+        privileged_info = self.task.get_privileged_info()
+        noisy_observation = self.task.get_noisy_observation()
+
+        tactile = None
+        if self._tactile_ob:
+            tactile = self.get_tactile_obs()
+
+        camera = None
+        if self._camera_ob:
+            camera = self.get_camera_obs()
+
+        if tactile and camera:
+            state = dict(
+                [("proprio", robot_state)]
+                + list(tactile.items())
+                + list(camera.items())
+                + [
+                    ("privileged_info", privileged_info),
+                    # ("noisy_observation", noisy_observation),
+                ]
+            )
+        elif tactile:
+            state = dict(
+                [("proprio", robot_state)]
+                + list(tactile.items())
+                + [
+                    ("privileged_info", privileged_info),
+                    # ("noisy_observation", noisy_observation),
+                ]
+            )
+        elif camera:
+            state = dict(
+                [("proprio", robot_state)]
+                + list(camera.items())
+                + [
+                    ("privileged_info", privileged_info),
+                    # ("noisy_observation", noisy_observation),
+                ]
+            )
+        else:
+            state = dict(
+                [("proprio", robot_state)]
+                + [
+                    ("privileged_info", privileged_info),
+                    # ("noisy_observation", noisy_observation),
+                ]
+            )
+        return state
+
+    def reset_model(self):
+
+        return self.get_obs()
