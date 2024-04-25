@@ -93,6 +93,15 @@ export VAR_PATH="data/reach_two_hands/var.npy"
 python -m humanoid_bench.test_env --env h1hand-push-v0 --policy_path ${POLICY_PATH} --mean_path ${MEAN_PATH} --var_path ${VAR_PATH} --policy_type "reach_double_relative"
 ```
 
+### Test Low-Level Reaching Policy (trained with MJX, testing on classical MuJoCo)
+```
+# One-hand reaching
+python -m humanoid_bench.mjx.mjx_test --with_full_model 
+
+# Two-hand reaching
+python -m humanoid_bench.mjx.mjx_test --with_full_model --task=reach_two_hands --folder=./data/reach_two_hands
+```
+
 ### Change Observations
 As a default, the environment returns a privileged state of the environment (e.g., robot state + environment state). To get proprio, visual, and tactile sensing, set `obs_wrapper=True` and accordingly select the required sensors, e.g. `sensors="proprio,image,tactile"`. When using tactile sensing, make sure to use `h1touch` in place of `h1hand`.
 Full test instruction:
@@ -159,6 +168,12 @@ python -m tdmpc2.train disable_wandb=False wandb_entity=[WANDB_ENTITY] exp_name=
 # Train DreamerV3 with pre-trained low-level policy
 python -m embodied.agents.dreamerv3.train --configs humanoid_benchmark --run.wandb True --run.wandb_entity [WANDB_ENTITY] --method dreamer_${TASK}_hierarchical --logdir logs --env.humanoid.policy_path ${POLICY_PATH} --env.humanoid.mean_path ${MEAN_PATH} --env.humanoid.var_path ${VAR_PATH} --env.humanoid.policy_type="reach_single" --task humanoid_${TASK} --seed 0
 ```
+
+## Paper Training Curves
+
+Please find [here](https://github.com/carlosferrazza/humanoid-bench/tree/main/logs) json files including all the training curves, so that comparing with our baselines will not necessarily require re-running them in the future.
+
+The json files follow this key structure: task -> method -> seed_X -> (million_steps or return). As an example to access the return sequence for one seed of the SAC run for the walk task, you can query the json data as `data['walk']['SAC']['seed_0']['return']`.
 
 
 ## Citation
